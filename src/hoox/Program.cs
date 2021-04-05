@@ -15,7 +15,6 @@ namespace hoox
     {
         public static void Main(string[] args)
         {
-            WebRequest.DefaultWebProxy = null;
             CreateHostBuilder(args).Build().Run();
         }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -26,7 +27,8 @@ namespace hoox.Services
         }
         public async Task SendTelegram(JObject content)
         {
-            TelegramBotClient bot = null;
+
+            Func<ChatId, string, Task> execute = null;
 
             if (_telegramOptions.Value.UseProxy)
             {
@@ -36,21 +38,75 @@ namespace hoox.Services
                 {
                     proxy = new WebProxy(new Uri($"{_telegramOptions.Value.ProxyHost}:{_telegramOptions.Value.ProxyPort}", UriKind.Absolute))
                     {
-                        UseDefaultCredentials = false,
-                        BypassProxyOnLocal = true,
+                        UseDefaultCredentials = false
                     };
                 }
-                bot = new Telegram.Bot.TelegramBotClient(_telegramOptions.Value.ApiKey, proxy);
+
+                if (_telegramOptions.Value.UseClassicRestClient)
+                {
+                    execute = async (chatId, message) =>
+                    {
+                        _logger.LogInformation("Using CLASSIC REST client...");
+                        var httpClient = new HttpClient(new HttpClientHandler
+                        {
+                            UseProxy = true,
+                            Proxy = proxy
+                        });
+
+                        var request = await httpClient.PostAsync(
+                            $"https://api.telegram.org/bot{_telegramOptions.Value.ApiKey}/sendMessage",
+                            new StringContent(JsonConvert.SerializeObject(new
+                            {
+                                chat_id = chatId.ToString(),
+                                text = message,
+                                parse_mode = "MarkdownV2"
+                            }), Encoding.UTF8, "application/json"));
+                    };
+                }
+                else
+                {
+                    
+                    execute = async (chatId, message) =>
+                    {
+                        _logger.LogInformation("Using CHAT BOT client...");
+                        var bot = new Telegram.Bot.TelegramBotClient(_telegramOptions.Value.ApiKey, proxy);
+                        await bot.SendTextMessageAsync(chatId, message, ParseMode.MarkdownV2);
+                    };
+                }
             }
             else
             {
                 _logger.LogInformation("NOT using a proxy...");
-                bot = new Telegram.Bot.TelegramBotClient(_telegramOptions.Value.ApiKey, new HttpClient(new HttpClientHandler
+                var httpClient = new HttpClient(new HttpClientHandler
                 {
                     UseProxy = false,
                     Proxy = null,
                     Credentials = null
-                }));
+                });
+                if (_telegramOptions.Value.UseClassicRestClient)
+                {
+                    execute = async (chatId, message) =>
+                    {
+                        _logger.LogInformation("Using CLASSIC REST client...");
+                        var request = await httpClient.PostAsync(
+                            $"https://api.telegram.org/bot{_telegramOptions.Value.ApiKey}/sendMessage",
+                            new StringContent(JsonConvert.SerializeObject(new
+                            {
+                                chat_id = chatId.ToString(),
+                                text = message,
+                                parse_mode = "MarkdownV2"
+                            }),Encoding.UTF8, "application/json"));
+                    };
+                }
+                else
+                {
+                    _logger.LogInformation("Using CHAT BOT client...");
+                    var bot = new Telegram.Bot.TelegramBotClient(_telegramOptions.Value.ApiKey, httpClient);
+                    execute = async (chatId, message) =>
+                    {
+                        await bot.SendTextMessageAsync(chatId, message, ParseMode.MarkdownV2);
+                    };
+                }
             }
 
             StringBuilder body = new StringBuilder();
@@ -67,8 +123,7 @@ namespace hoox.Services
 ```");
 
             var chatId = new ChatId(_telegramOptions.Value.ChatId);
-            await bot.SendTextMessageAsync(chatId,
-                body.ToString(),ParseMode.MarkdownV2);
+            await execute(chatId, body.ToString());
         }
 
         public static string SanitizeMarkdownString(string markdown)

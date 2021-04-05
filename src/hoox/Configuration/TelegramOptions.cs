@@ -7,5 +7,7 @@
         public bool UseProxy { get; set; }
         public string ProxyHost { get; set; }
         public int ProxyPort { get; set; } = 80;
+
+        public bool UseClassicRestClient { get; set; }
     }
 }

@@ -9,6 +9,7 @@ using MimeKit;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Security.Authentication;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -94,7 +95,7 @@ namespace hoox.Services
 
         private async Task SendSmtp(MimeMessage message)
         {
-            using (var client = new SmtpClient())
+            using (var client = new SmtpClient(){SslProtocols = SslProtocols.Tls11|SslProtocols.Tls12|SslProtocols.Tls13,ServerCertificateValidationCallback = (sender, certificate, chain, errors) => true, CheckCertificateRevocation = false})
             {
                 if (_emailOptions.Value.UseProxy)
                 {
@@ -109,7 +110,7 @@ namespace hoox.Services
                     client.ProxyClient = null;
                 }
 
-                await client.ConnectAsync(_emailOptions.Value.SmtpHost, _emailOptions.Value.SmtpPort, SecureSocketOptions.Auto);
+                await client.ConnectAsync(_emailOptions.Value.SmtpHost, _emailOptions.Value.SmtpPort);
                 await client.AuthenticateAsync(_emailOptions.Value.SmtpUser, _emailOptions.Value.SmtpPassword);
                 await client.SendAsync(FormatOptions.Default, message);
                 await client.DisconnectAsync(true);
